@@ -1,0 +1,48 @@
+{
+  "name": "@and7ey/opencode-go-usage",
+  "version": "1.0.0",
+  "description": "OpenCode TUI plugin showing OpenCode Go subscription usage (5h, week, month).",
+  "type": "module",
+  "license": "MIT",
+  "main": "./opencode-go-usage-tui.mjs",
+  "exports": {
+    ".": "./opencode-go-usage-tui.mjs",
+    "./tui": "./opencode-go-usage-tui.mjs",
+    "./usage": "./usage.mjs"
+  },
+  "files": [
+    "opencode-go-usage-tui.mjs",
+    "usage.mjs",
+    "tui.example.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test usage.test.mjs"
+  },
+  "dependencies": {
+    "@opentui/solid": "0.5.4",
+    "solid-js": "1.9.12"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tui",
+    "usage",
+    "quota",
+    "opencode-go",
+    "subscription"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/and7ey/opencode-go-usage.git"
+  },
+  "author": "and7ey",
+  "bugs": {
+    "url": "https://github.com/and7ey/opencode-go-usage/issues"
+  },
+  "homepage": "https://github.com/and7ey/opencode-go-usage#readme"
+}
