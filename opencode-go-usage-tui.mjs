@@ -1,10 +1,56 @@
 import { jsx } from "@opentui/solid/jsx-runtime"
 import { createMemo, createRoot, createSignal, Show } from "solid-js"
-import { formatUsage, isGoProvider, maxPercent, readGoKey, readRecentProvider, fetchUsage } from "./usage.mjs"
+import {
+  formatPercent,
+  isGoProvider,
+  LEVEL_INDICATOR,
+  readGoKey,
+  readRecentProvider,
+  fetchUsage,
+  usageSegments,
+  worstLevel,
+} from "./usage.mjs"
 
 const REFRESH_MS = 60_000
-const WARN_PERCENT = 50
-const ERROR_PERCENT = 80
+
+/**
+ * The banner as sibling `<text>` nodes: labels and values take the line colour, while
+ * the small diamond after each value takes its own window's colour.
+ *
+ * The nodes are built here, inside the slot. Renderables created next to the model live
+ * under the plugin root, and inserting those into the banner fails with an orphan-text
+ * error.
+ */
+function renderLine(model) {
+  const nodes = [
+    jsx("text", {
+      get fg() {
+        return model.lineColor()
+      },
+      children: "Go ",
+    }),
+  ]
+  const segments = model.segments() ?? []
+  segments.forEach((segment, index) => {
+    nodes.push(
+      jsx("text", {
+        get fg() {
+          return model.lineColor()
+        },
+        get children() {
+          return `${index > 0 ? " · " : ""}${segment.label} ${formatPercent(segment.percent)} `
+        },
+      }),
+      jsx("text", {
+        get fg() {
+          return model.levelColor(segment.level)
+        },
+        children: LEVEL_INDICATOR,
+      }),
+    )
+  })
+  return nodes
+}
 
 /**
  * OpenCode Go subscription usage banner (5h / week / month).
@@ -46,13 +92,16 @@ async function tui(api) {
 
     const visible = createMemo(() => isGoProvider(activeProvider()) && usage() !== null)
 
-    const color = createMemo(() => {
-      const peak = maxPercent(usage())
+    const segments = createMemo(() => usageSegments(usage()))
+
+    const lineColor = createMemo(() => levelColor(worstLevel(usage())))
+
+    function levelColor(level) {
       const theme = api.theme?.current
-      if (peak >= ERROR_PERCENT) return theme?.error ?? theme?.text
-      if (peak >= WARN_PERCENT) return theme?.warning ?? theme?.text
+      if (level === "red") return theme?.error ?? theme?.text
+      if (level === "yellow") return theme?.warning ?? theme?.text
       return theme?.success ?? theme?.text
-    })
+    }
 
     let stopped = false
 
@@ -84,7 +133,7 @@ async function tui(api) {
       })
     }
 
-    return { usage, visible, color }
+    return { visible, segments, lineColor, levelColor }
   })
 
   api.slots.register({
@@ -100,14 +149,9 @@ async function tui(api) {
               flexDirection: "row",
               paddingLeft: 1,
               paddingRight: 1,
-              children: jsx("text", {
-                get fg() {
-                  return model.color()
-                },
-                get children() {
-                  return formatUsage(model.usage())
-                },
-              }),
+              get children() {
+                return renderLine(model)
+              },
             })
           },
         })

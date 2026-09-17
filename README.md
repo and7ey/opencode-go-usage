@@ -4,8 +4,11 @@ An [OpenCode](https://opencode.ai) TUI plugin that shows your **OpenCode Go** su
 in the bottom bar — the rolling **5h**, **week** and **month** windows.
 
 ```text
-Go 5h 7.0% · week 3.0% · month 1.0%
+Go 5h 14% ◆ · week 28% ◆ · month 14% ◆
 ```
+
+The diamond after each value is tinted red, yellow or green by that window's own forecast (see
+[Colours](#colours)); it needs a colour-capable terminal to be read.
 
 The banner appears **only while the active provider is OpenCode Go**; switch to another provider
 and it disappears.
@@ -76,7 +79,22 @@ Restart OpenCode after changing `tui.json`.
 
 ## Colours
 
-The line is tinted by the highest window: green below 50%, yellow from 50%, red from 80%.
+Every window gets its own small diamond (`◆`) right after its value, tinted by that window alone;
+the rest of the line is tinted by the most severe of the three.
+
+| Diamond | Meaning |
+| --- | --- |
+| green | on pace — the current pace fits inside the limit |
+| yellow | close — already 50%+, or on pace to land on 80%+ before the window resets |
+| red | over — already at 100%, or on pace to overshoot it |
+
+The forecast extrapolates the usage so far to the window's `resetsAt`. Until at least 10% of a
+window has elapsed (30 minutes of the 5h window, about three days of the month) the pace is too
+noisy to project, so only the current percentage is judged. The current percentage is never
+extrapolated on a missing or unparsable `resetsAt`.
+
+Note that the API reports whole percentages (`percent: 14`, not `14.3`), so decimals appear only if
+the endpoint ever sends them.
 
 ## Development
 
@@ -84,8 +102,8 @@ The line is tinted by the highest window: green below 50%, yellow from 50%, red 
 npm test
 ```
 
-The pure logic in `usage.mjs` (auth path, key lookup, payload parsing, formatting, provider gating,
-HTTP handling) is covered by `usage.test.mjs` using `node --test`.
+The pure logic in `usage.mjs` (auth path, key lookup, payload parsing, window forecasting,
+formatting, provider gating, HTTP handling) is covered by `usage.test.mjs` using `node --test`.
 
 ## License
 

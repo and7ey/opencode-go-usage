@@ -65,6 +65,26 @@ const WINDOWS = [
   ["monthly", "month"],
 ]
 
+const WINDOW_MS = {
+  rolling: 5 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+}
+
+/** Small diamond marker. The glyph carries no colour of its own: the renderer tints it by level. */
+export const LEVEL_INDICATOR = "◆"
+
+const LEVEL_RANK = { green: 0, yellow: 1, red: 2 }
+
+const CAUTION_PERCENT = 50
+const WARN_PERCENT = 80
+const LIMIT_PERCENT = 100
+
+/**
+ * Below this share of the window a projection is pure noise, so only the current
+ * percentage is judged. 10% of a 5h window is 30min, of a month about three days.
+ */
+const MIN_PROGRESS = 0.1
+
 /** Normalize the API payload into `{ rolling, weekly, monthly }` cards. */
 export function parseUsage(payload) {
   const usage = payload?.usage
@@ -85,16 +105,112 @@ export function parseUsage(payload) {
   return Object.keys(out).length > 0 ? out : null
 }
 
-/** Render `{ rolling, weekly, monthly }` as a single line, e.g. `Go 5h 4.0% · week 1.0% · month 0.0%`. */
-export function formatUsage(parsed, { prefix = "Go", separator = " · " } = {}) {
+/** Shifts an instant by whole months in UTC, clamping the day to the target month's length. */
+function shiftMonths(time, months) {
+  const date = new Date(time)
+  const day = date.getUTCDate()
+  const shifted = new Date(time)
+  shifted.setUTCDate(1)
+  shifted.setUTCMonth(shifted.getUTCMonth() + months)
+  const daysInTarget = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate()
+  shifted.setUTCDate(Math.min(day, daysInTarget))
+  return shifted.getTime()
+}
+
+/**
+ * How far into a window we are. Each window ends at `resetsAt`; its length is
+ * nominal (5h / 7d) except the monthly one, which is a calendar month.
+ * Returns `null` when `resetsAt` is missing or unusable.
+ */
+export function windowProgress(key, { resetsAt, now = Date.now() } = {}) {
+  const end = typeof resetsAt === "string" ? Date.parse(resetsAt) : NaN
+  if (!Number.isFinite(end)) return null
+  const start = key === "monthly" ? shiftMonths(end, -1) : end - WINDOW_MS[key]
+  if (!Number.isFinite(start)) return null
+  const total = end - start
+  if (!(total > 0)) return null
+  const progress = Math.min(1, Math.max(0, (now - start) / total))
+  return { start, end, total, progress, remainingMs: Math.max(0, end - now) }
+}
+
+/**
+ * The red/yellow/green verdict for one window.
+ *
+ * The current percentage alone decides at 50% (yellow) and 100% (red). On top of
+ * that, once at least `MIN_PROGRESS` of the window has elapsed, the pace so far is
+ * extrapolated to `resetsAt`: landing on 80%+ is yellow, on 100%+ is red. A window
+ * that is too young to extrapolate is judged on its current percentage only.
+ * `projected` stays `null` when no projection was possible.
+ */
+export function forecastLevel(item, key, now = Date.now()) {
+  const percent = Number(item?.percent)
+  if (!Number.isFinite(percent)) return null
+  const elapsed = windowProgress(key, { resetsAt: item?.resetsAt, now })
+  let level = "green"
+  if (percent >= CAUTION_PERCENT) level = "yellow"
+  if (percent >= LIMIT_PERCENT) level = "red"
+  let projected = null
+  if (elapsed && elapsed.progress >= MIN_PROGRESS) {
+    projected = percent / elapsed.progress
+    if (projected >= LIMIT_PERCENT) level = "red"
+    else if (projected >= WARN_PERCENT && level === "green") level = "yellow"
+  }
+  return {
+    level,
+    projected,
+    progress: elapsed?.progress ?? null,
+    remainingMs: elapsed?.remainingMs ?? null,
+  }
+}
+
+/** `13`, `1.5` — one decimal only when the API actually reports one. */
+export function formatPercent(percent) {
+  const rounded = Math.round(percent * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`
+}
+
+/**
+ * The line split into per-window pieces, each carrying its own verdict, so a
+ * renderer can colour them individually. `null` when there is nothing to show.
+ */
+export function usageSegments(parsed, { now = Date.now(), indicators = true } = {}) {
   if (!parsed) return null
-  const parts = WINDOWS.map(([key]) => {
+  const segments = WINDOWS.map(([key, label]) => {
     const item = parsed[key]
     if (!item) return null
-    return `${item.label} ${item.percent.toFixed(1)}%`
+    const verdict = forecastLevel(item, key, now)
+    const level = verdict?.level ?? "green"
+    return {
+      key,
+      label,
+      percent: item.percent,
+      level,
+      projected: verdict?.projected ?? null,
+      remainingMs: verdict?.remainingMs ?? null,
+      text: `${label} ${formatPercent(item.percent)}${indicators ? ` ${LEVEL_INDICATOR}` : ""}`,
+    }
   }).filter(Boolean)
-  if (parts.length === 0) return null
-  return `${prefix} ${parts.join(separator)}`
+  return segments.length > 0 ? segments : null
+}
+
+/** The most severe verdict across the windows, used to tint the whole line. */
+export function worstLevel(parsed, { now = Date.now() } = {}) {
+  const segments = usageSegments(parsed, { now, indicators: false })
+  if (!segments) return null
+  return segments.reduce((worst, { level }) => (LEVEL_RANK[level] > LEVEL_RANK[worst] ? level : worst), "green")
+}
+
+/**
+ * Render the windows as one line, e.g. `Go 5h 4% ◆ · week 9% ◆ · month 2% ◆`.
+ *
+ * The marker is one glyph for every level, because it is meant to be tinted by the
+ * segment's own `level` — read those from `usageSegments`, or use `worstLevel` for
+ * the whole line. The plain string keeps no colour of its own.
+ */
+export function formatUsage(parsed, { prefix = "Go", separator = " · ", now = Date.now(), indicators = true } = {}) {
+  const segments = usageSegments(parsed, { now, indicators })
+  if (!segments) return null
+  return `${prefix} ${segments.map((segment) => segment.text).join(separator)}`
 }
 
 /** Highest window percentage, used to pick a colour. */
