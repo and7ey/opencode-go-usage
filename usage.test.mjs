@@ -5,6 +5,7 @@ import {
   fetchUsage,
   forecastLevel,
   formatPercent,
+  formatRemaining,
   formatUsage,
   isGoProvider,
   maxPercent,
@@ -90,6 +91,22 @@ test("formatPercent drops the decimal the API does not report", () => {
   assert.equal(formatPercent(12.34), "12.3%")
 })
 
+test("formatRemaining renders a compact time until reset", () => {
+  assert.equal(formatRemaining(4 * 3_600_000 + 53 * 60_000), "4h53m")
+  assert.equal(formatRemaining(2 * 3_600_000), "2h")
+  assert.equal(formatRemaining(53 * 60_000), "53m")
+  assert.equal(formatRemaining(30_000), "<1m")
+  assert.equal(formatRemaining(0), "<1m")
+  assert.equal(formatRemaining(2 * 86_400_000 + 3 * 3_600_000), "2d3h")
+  assert.equal(formatRemaining(2 * 86_400_000), "2d")
+})
+
+test("formatRemaining gives up on an unknown remaining time", () => {
+  assert.equal(formatRemaining(-1), null)
+  assert.equal(formatRemaining(Number.NaN), null)
+  assert.equal(formatRemaining(undefined), null)
+})
+
 test("windowProgress reports the elapsed share of a window", () => {
   const rollingHalf = windowProgress("rolling", { resetsAt: "2026-09-17T14:00:00.000Z", now: NOW })
   assert.equal(rollingHalf.progress, 0.6)
@@ -166,12 +183,38 @@ test("usageSegments tags every window with its own verdict", () => {
   assert.deepEqual(
     segments.map((segment) => [segment.label, segment.level, segment.text]),
     [
-      ["5h", "red", "5h 70% ◆"],
+      ["5h", "red", "5h 70% ◆ ↻2h"],
       ["week", "green", "week 28% ◆"],
       ["month", "green", "month 14% ◆"],
     ],
   )
   assert.equal(usageSegments(null), null)
+})
+
+test("usageSegments shows the reset hint only on red windows", () => {
+  const parsed = parseUsage({
+    usage: {
+      rolling: { percent: 70, resetsAt: "2026-09-17T14:00:00.000Z" },
+      weekly: { percent: 28, resetsAt: "2026-09-21T00:00:00.000Z" },
+    },
+  })
+  const [rolling, weekly] = usageSegments(parsed, { now: NOW })
+  assert.equal(rolling.reset, "2h")
+  assert.equal(rolling.text, "5h 70% ◆ ↻2h")
+  assert.equal(weekly.reset, null)
+  assert.equal(weekly.text, "week 28% ◆")
+
+  const withoutHints = usageSegments(parsed, { now: NOW, resets: false })
+  assert.equal(withoutHints[0].reset, null)
+  assert.equal(withoutHints[0].text, "5h 70% ◆")
+})
+
+test("usageSegments omits the reset hint when the reset time is unknown", () => {
+  const parsed = parseUsage({ usage: { rolling: { percent: 120 } } })
+  const [rolling] = usageSegments(parsed, { now: NOW })
+  assert.equal(rolling.level, "red")
+  assert.equal(rolling.reset, null)
+  assert.equal(rolling.text, "5h 120% ◆")
 })
 
 test("worstLevel picks the most severe window", () => {
@@ -211,6 +254,24 @@ test("formatUsage renders all windows with their verdicts", () => {
   assert.equal(formatUsage(parseUsage(SAMPLE), { now: AFTER, indicators: false }), "Go 5h 4% · week 1.5% · month 0%")
   assert.equal(formatUsage(parseUsage(SAMPLE), { now: AFTER, prefix: "Go!", separator: "  " }), "Go! 5h 4% ◆  week 1.5% ◆  month 0% ◆")
   assert.equal(formatUsage(null), null)
+})
+
+test("formatUsage adds a reset hint to a red window", () => {
+  const parsed = parseUsage({
+    usage: {
+      rolling: { percent: 104, resetsAt: "2026-09-17T14:13:00.000Z" },
+      weekly: { percent: 28, resetsAt: "2026-09-21T00:00:00.000Z" },
+      monthly: { percent: 14, resetsAt: "2026-10-15T07:12:53.508Z" },
+    },
+  })
+  assert.equal(
+    formatUsage(parsed, { now: NOW }),
+    "Go 5h 104% ◆ ↻2h13m · week 28% ◆ · month 14% ◆",
+  )
+  assert.equal(
+    formatUsage(parsed, { now: NOW, resets: false }),
+    "Go 5h 104% ◆ · week 28% ◆ · month 14% ◆",
+  )
 })
 
 test("maxPercent picks the highest window", () => {

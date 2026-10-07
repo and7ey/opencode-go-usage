@@ -1,0 +1,6 @@
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": [
+    "@and7ey/opencode-go-usage"
+  ]
+}

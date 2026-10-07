@@ -1,19 +1,20 @@
 {
   "name": "@and7ey/opencode-go-usage",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "OpenCode TUI plugin showing OpenCode Go subscription usage (5h, week, month).",
   "type": "module",
   "license": "MIT",
-  "main": "./opencode-go-usage-tui.mjs",
+  "main": "./opencode-go-usage.mjs",
   "exports": {
-    ".": "./opencode-go-usage-tui.mjs",
+    ".": "./opencode-go-usage.mjs",
     "./tui": "./opencode-go-usage-tui.mjs",
     "./usage": "./usage.mjs"
   },
   "files": [
+    "opencode-go-usage.mjs",
     "opencode-go-usage-tui.mjs",
     "usage.mjs",
-    "tui.example.json",
+    "cli.example.json",
     "README.md",
     "LICENSE"
   ],
@@ -27,8 +28,19 @@
     "test": "node --test usage.test.mjs"
   },
   "dependencies": {
-    "@opentui/solid": "0.5.4",
-    "solid-js": "1.9.12"
+    "@opencode/plugin": "^2.0.24"
+  },
+  "peerDependencies": {
+    "@opentui/solid": ">=0.5.14",
+    "solid-js": ">=1.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
   },
   "keywords": [
     "opencode",

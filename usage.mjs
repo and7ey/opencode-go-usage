@@ -170,16 +170,41 @@ export function formatPercent(percent) {
 }
 
 /**
+ * Compact time until a window resets: `4h53m`, `2d3h`, `53m`, `<1m`.
+ *
+ * Whole units only (the seconds are dropped) and the trailing zero unit is
+ * omitted, so the hint stays short next to the value. Returns `null` for an
+ * unknown or already-elapsed remaining time.
+ */
+export function formatRemaining(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return null
+  const totalMinutes = Math.floor(ms / 60_000)
+  if (totalMinutes < 1) return "<1m"
+  const minutes = totalMinutes % 60
+  const totalHours = Math.floor(totalMinutes / 60)
+  const hours = totalHours % 24
+  const days = Math.floor(totalHours / 24)
+  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`
+  if (totalHours > 0) return minutes > 0 ? `${totalHours}h${minutes}m` : `${totalHours}h`
+  return `${minutes}m`
+}
+
+/**
  * The line split into per-window pieces, each carrying its own verdict, so a
  * renderer can colour them individually. `null` when there is nothing to show.
+ *
+ * A red window additionally carries `reset`, the compact time until `resetsAt`
+ * (see `formatRemaining`), so the reader knows when the overshoot clears. Pass
+ * `resets: false` to suppress it; `resets` is `null` when unknown.
  */
-export function usageSegments(parsed, { now = Date.now(), indicators = true } = {}) {
+export function usageSegments(parsed, { now = Date.now(), indicators = true, resets = true } = {}) {
   if (!parsed) return null
   const segments = WINDOWS.map(([key, label]) => {
     const item = parsed[key]
     if (!item) return null
     const verdict = forecastLevel(item, key, now)
     const level = verdict?.level ?? "green"
+    const reset = resets && level === "red" ? formatRemaining(verdict?.remainingMs) : null
     return {
       key,
       label,
@@ -187,7 +212,8 @@ export function usageSegments(parsed, { now = Date.now(), indicators = true } = 
       level,
       projected: verdict?.projected ?? null,
       remainingMs: verdict?.remainingMs ?? null,
-      text: `${label} ${formatPercent(item.percent)}${indicators ? ` ${LEVEL_INDICATOR}` : ""}`,
+      reset,
+      text: `${label} ${formatPercent(item.percent)}${indicators ? ` ${LEVEL_INDICATOR}` : ""}${reset ? ` ↻${reset}` : ""}`,
     }
   }).filter(Boolean)
   return segments.length > 0 ? segments : null
@@ -207,8 +233,11 @@ export function worstLevel(parsed, { now = Date.now() } = {}) {
  * segment's own `level` — read those from `usageSegments`, or use `worstLevel` for
  * the whole line. The plain string keeps no colour of its own.
  */
-export function formatUsage(parsed, { prefix = "Go", separator = " · ", now = Date.now(), indicators = true } = {}) {
-  const segments = usageSegments(parsed, { now, indicators })
+export function formatUsage(
+  parsed,
+  { prefix = "Go", separator = " · ", now = Date.now(), indicators = true, resets = true } = {},
+) {
+  const segments = usageSegments(parsed, { now, indicators, resets })
   if (!segments) return null
   return `${prefix} ${segments.map((segment) => segment.text).join(separator)}`
 }
