@@ -33,6 +33,10 @@ subscription usage (5h / week / month) in the `prompt.footer.status` slot. Publi
 - The reset hint (`↻4h53m`, via `formatRemaining`) is emitted **only for red windows**; segments
   carry a `reset` field, and `usageSegments(..., { resets: false })` suppresses it. Green/yellow
   windows never show one.
+- The banner is **hidden on a fresh session** (no messages for the current `sessionID`) and on
+  non-Go providers — the prompt footer is too tight before the first message. On pace the line is
+  muted (`theme.text.muted`), not green; only the diamonds and a yellow/red line use signal colours.
+  A trailing ` · ` separator ends the line.
 - The plugin is deliberately **fail-silent**: missing key, non-Go provider, network error, rate
   limit, or a bad response all just keep the banner hidden. Don't introduce throwing/logging there.
 - **Key source (OpenCode 2):** credentials are no longer written to `~/.local/share/opencode/auth.json`

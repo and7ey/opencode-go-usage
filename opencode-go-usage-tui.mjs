@@ -14,6 +14,7 @@ import {
 
 const REFRESH_MS = 60_000
 const TICK_MS = 60_000
+const SEPARATOR = " · "
 
 /** Feedback colours from the active theme; falls back to the base text colour. */
 function levelColor(theme, level) {
@@ -23,10 +24,29 @@ function levelColor(theme, level) {
   return feedback?.success?.base ?? theme?.text?.base
 }
 
+/** The line colour: muted while on pace, the warning colours when not. */
+function lineColorFor(theme, level) {
+  if (level === "red") return levelColor(theme, "red")
+  if (level === "yellow") return levelColor(theme, "yellow")
+  return theme?.text?.muted ?? theme?.text?.base
+}
+
+/** True once the active session has at least one message (i.e. it is not fresh). */
+function hasMessages(context, sessionID) {
+  if (!sessionID) return false
+  try {
+    const messages = context.data?.session?.message?.list?.(sessionID)
+    return Array.isArray(messages) && messages.length > 0
+  } catch {
+    return false
+  }
+}
+
 /**
  * The banner as sibling `<text>` nodes: labels and values take the line colour,
  * while the small diamond after each value takes its own window's colour. A red
- * window gets its compact reset hint (`↻4h53m`) in the same colour.
+ * window gets its compact reset hint (`↻4h53m`) in the same colour. A trailing
+ * separator keeps the line from running into the next footer item.
  *
  * The nodes are built here, inside the slot renderer. Renderables created next
  * to the model live under the plugin root, and inserting those into the banner
@@ -49,7 +69,7 @@ function renderLine(model) {
           return model.lineColor()
         },
         get children() {
-          return `${index > 0 ? " · " : ""}${segment.label} ${formatPercent(segment.percent)} `
+          return `${index > 0 ? SEPARATOR : ""}${segment.label} ${formatPercent(segment.percent)} `
         },
       }),
       jsx("text", {
@@ -72,6 +92,16 @@ function renderLine(model) {
       )
     }
   })
+  if (segments.length > 0) {
+    nodes.push(
+      jsx("text", {
+        get fg() {
+          return model.lineColor()
+        },
+        children: SEPARATOR,
+      }),
+    )
+  }
   return nodes
 }
 
@@ -99,10 +129,12 @@ async function resolveGoKey(context) {
  * OpenCode Go subscription usage banner (5h / week / month).
  *
  * Rendered in the `prompt.footer.status` slot, but only while the selected
- * provider is OpenCode Go. The provider comes from the prompt's selected model
- * (`context.ui.model.current()`), which is reactive, so switching providers or
- * sessions shows or hides the banner. Everything stays hidden when the key is
- * missing/expired, the network is down, or the request is rate limited.
+ * provider is OpenCode Go AND the current session already has messages — on a
+ * fresh (empty) session the footer is too tight, so the banner stays hidden
+ * until the first message. The provider comes from the prompt's selected model
+ * (`context.ui.model.current()`), which is reactive. Everything stays hidden
+ * when the key is missing/expired, the network is down, or the request is rate
+ * limited.
  */
 async function setup(context) {
   const [usage, setUsage] = createSignal(null)
@@ -119,11 +151,13 @@ async function setup(context) {
       if (!isGoProvider(context.ui.model.current()?.providerID) || !parsed) return null
       return usageSegments(parsed, { now: now() })
     },
-    visible() {
+    visible(input) {
+      if (!isGoProvider(context.ui.model.current()?.providerID)) return false
+      if (!hasMessages(context, input?.sessionID)) return false
       return model.segments() !== null
     },
     lineColor() {
-      return levelColor(context.theme, worstLevel(usage(), { now: now() }) ?? "green")
+      return lineColorFor(context.theme, worstLevel(usage(), { now: now() }) ?? "green")
     },
     levelColor(level) {
       return levelColor(context.theme, level)
@@ -157,10 +191,10 @@ async function setup(context) {
 
   context.ui.slot({
     append: "prompt.footer.status",
-    render: () =>
+    render: (input) =>
       jsx(Show, {
         get when() {
-          return model.visible()
+          return model.visible(input)
         },
         get children() {
           return jsx("box", {

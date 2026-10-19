@@ -5,14 +5,21 @@ subscription usage in the prompt footer — the rolling **5h**, **week** and **m
 windows.
 
 ```text
-Go 5h 14% ◆ · week 28% ◆ · month 14% ◆
+Go 5h 14% ◆ · week 28% ◆ · month 14% ◆ ·
 ```
 
 A red window also shows how long is left until it resets:
 
 ```text
-Go 5h 104% ◆ ↻2h13m · week 28% ◆ · month 14% ◆
+Go 5h 104% ◆ ↻2h13m · week 28% ◆ · month 14% ◆ ·
 ```
+
+The line uses the theme's muted colour while you are on pace and the warning colours when a window
+is close or over; the diamonds keep their own red/yellow/green. A trailing `·` separates it from the
+next footer item.
+
+The banner is hidden on a **fresh session** (no messages yet), where the prompt footer is tight, and
+appears once the session has its first message.
 
 The diamond after each value is tinted red, yellow or green by that window's own forecast (see
 [Colours](#colours)); it needs a colour-capable terminal to be read.
