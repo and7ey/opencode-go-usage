@@ -6,9 +6,9 @@ subscription usage (5h / week / month) in the `prompt.footer.status` slot. Publi
 
 ## Layout
 
-- `usage.mjs` — pure logic: auth/model file paths, key lookup, payload parsing, forecast levels,
-  reset-hint formatting, line formatting, provider gating, HTTP. **The tested module and the public
-  `./usage` export.**
+- `usage.mjs` — pure logic: key lookup (client-credential pick + `auth.json` fallback), model file
+  path, payload parsing, forecast levels, reset-hint formatting, line formatting, provider gating,
+  HTTP. **The tested module and the public `./usage` export.**
 - `opencode-go-usage-tui.mjs` — the V2 CLI plugin (the `./tui` export) built with
   `Plugin.define({ id, setup })` from `@opencode/plugin/tui`. Imports `@opentui/solid/jsx-runtime`
   and `solid-js`; only runs inside OpenCode's TUI.
@@ -35,6 +35,11 @@ subscription usage (5h / week / month) in the `prompt.footer.status` slot. Publi
   windows never show one.
 - The plugin is deliberately **fail-silent**: missing key, non-Go provider, network error, rate
   limit, or a bad response all just keep the banner hidden. Don't introduce throwing/logging there.
+- **Key source (OpenCode 2):** credentials are no longer written to `~/.local/share/opencode/auth.json`
+  — `/connect` stores them in OpenCode's own store, read via `context.client.credential.list()`
+  (`goKeyFromCredentials` picks the active `opencode-go` `key` entry). `readGoKey()` (the old
+  `auth.json` path) is only a fallback. Resolve the key on every refresh, not once in `setup`, so a
+  re-`/connect` or key rotation is picked up without a TUI restart.
 - In the TUI file, signals (`createSignal`) and timers are created once in `setup`, **outside** the
   slot renderer; the render function only reads signals (`usage()`, `now()`) and
   `context.ui.model.current()`, all reactive. Renderables must be built inside the slot renderer

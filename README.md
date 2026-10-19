@@ -22,9 +22,10 @@ and it disappears.
 
 ## How it works
 
-OpenCode already stores your OpenCode Go API key locally in
-`~/.local/share/opencode/auth.json` (under `opencode-go`). The plugin reads that key and calls the
-same JSON endpoint the console uses:
+OpenCode stores your OpenCode Go API key and exposes it to plugins through the
+client's credential API (`client.credential.list()`, `integrationID` `opencode-go`). The plugin reads
+that key — falling back to the legacy `~/.local/share/opencode/auth.json` — and calls the same JSON
+endpoint the console uses:
 
 ```text
 GET https://opencode.ai/zen/go/v1/usage

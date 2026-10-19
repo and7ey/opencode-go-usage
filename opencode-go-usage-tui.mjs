@@ -4,6 +4,7 @@ import { createSignal, Show } from "solid-js"
 import {
   fetchUsage,
   formatPercent,
+  goKeyFromCredentials,
   isGoProvider,
   LEVEL_INDICATOR,
   readGoKey,
@@ -75,6 +76,26 @@ function renderLine(model) {
 }
 
 /**
+ * Resolve the OpenCode Go API key.
+ *
+ * OpenCode 2 no longer writes `auth.json`: `/connect` stores the key in
+ * OpenCode's credential store, exposed to plugins as
+ * `client.credential.list()`. The legacy file remains the fallback for older
+ * versions, or if the credential API is unavailable. Resolved on every refresh
+ * so a re-`/connect` or a key rotation is picked up without restarting the TUI.
+ */
+async function resolveGoKey(context) {
+  try {
+    const entries = await context.client?.credential?.list?.()
+    const key = goKeyFromCredentials(entries)
+    if (key) return key
+  } catch {
+    // Credential API unavailable: fall back to the local file.
+  }
+  return readGoKey()
+}
+
+/**
  * OpenCode Go subscription usage banner (5h / week / month).
  *
  * Rendered in the `prompt.footer.status` slot, but only while the selected
@@ -84,8 +105,6 @@ function renderLine(model) {
  * missing/expired, the network is down, or the request is rate limited.
  */
 async function setup(context) {
-  const apiKey = readGoKey()
-
   const [usage, setUsage] = createSignal(null)
   const [now, setNow] = createSignal(Date.now())
 
@@ -114,33 +133,26 @@ async function setup(context) {
   let stopped = false
 
   async function refresh() {
-    if (!apiKey || stopped) return
+    if (stopped) return
     try {
-      const parsed = await fetchUsage(apiKey)
+      const key = await resolveGoKey(context)
+      if (!key) return
+      const parsed = await fetchUsage(key)
       if (!stopped) setUsage(parsed)
     } catch {
       // Missing/expired keys, network errors and rate limits keep the banner hidden.
     }
   }
 
-  let cleanup
-  if (apiKey) {
-    void refresh()
-    const refreshTimer = setInterval(() => void refresh(), REFRESH_MS)
-    // Advance the clock so the reset hint counts down between fetches.
-    const clock = setInterval(() => setNow(Date.now()), TICK_MS)
-    let stopEvent
-    try {
-      stopEvent = context.data.on("session.idle", () => void refresh())
-    } catch {
-      // Event bus unavailable: the timer still refreshes.
-    }
-    cleanup = () => {
-      stopped = true
-      clearInterval(refreshTimer)
-      clearInterval(clock)
-      stopEvent?.()
-    }
+  void refresh()
+  const refreshTimer = setInterval(() => void refresh(), REFRESH_MS)
+  // Advance the clock so the reset hint counts down between fetches.
+  const clock = setInterval(() => setNow(Date.now()), TICK_MS)
+  let stopEvent
+  try {
+    stopEvent = context.data.on("session.idle", () => void refresh())
+  } catch {
+    // Event bus unavailable: the timer still refreshes.
   }
 
   context.ui.slot({
@@ -162,7 +174,12 @@ async function setup(context) {
       }),
   })
 
-  return cleanup
+  return () => {
+    stopped = true
+    clearInterval(refreshTimer)
+    clearInterval(clock)
+    stopEvent?.()
+  }
 }
 
 export default Plugin.define({ id: "opencode-go-usage", setup })

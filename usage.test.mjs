@@ -7,6 +7,7 @@ import {
   formatPercent,
   formatRemaining,
   formatUsage,
+  goKeyFromCredentials,
   isGoProvider,
   maxPercent,
   modelFilePath,
@@ -79,6 +80,29 @@ test("readRecentProvider returns null for empty, malformed and missing files", (
         throw new Error("ENOENT")
       },
     }),
+    null,
+  )
+})
+
+test("goKeyFromCredentials picks the active Go key from credential.list()", () => {
+  const entries = [
+    { integrationID: "deepseek", active: true, value: { type: "key", key: "ds-key" } },
+    { integrationID: "opencode-go", active: false, value: { type: "key", key: "stale-key" } },
+    { integrationID: "opencode-go", active: true, value: { type: "key", key: "  fresh-key  " } },
+  ]
+  assert.equal(goKeyFromCredentials(entries), "fresh-key")
+})
+
+test("goKeyFromCredentials returns null without an active key credential", () => {
+  assert.equal(goKeyFromCredentials(null), null)
+  assert.equal(goKeyFromCredentials(undefined), null)
+  assert.equal(goKeyFromCredentials([]), null)
+  assert.equal(
+    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "oauth", access: "x" } }]),
+    null,
+  )
+  assert.equal(
+    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "key", key: "   " } }]),
     null,
   )
 })

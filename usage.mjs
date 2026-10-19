@@ -45,6 +45,27 @@ export function readGoKey({ env = process.env, home = homedir(), readFile = defa
 }
 
 /**
+ * Pick the active API key for a provider from `OpenCodeClient.credential.list()`
+ * entries.
+ *
+ * OpenCode 2 stopped using `auth.json` and keeps credentials in its own store,
+ * surfaced to plugins through the client's `credential` domain. Entries look
+ * like `{ integrationID, label, active, value: { type: "key", key } }`; the
+ * active `key` entry wins. Returns `null` when there is no active key.
+ */
+export function goKeyFromCredentials(entries, integrationID = GO_PROVIDER_ID) {
+  if (!Array.isArray(entries)) return null
+  for (const entry of entries) {
+    if (!entry || entry.integrationID !== integrationID || entry.active !== true) continue
+    const value = entry.value
+    if (value?.type === "key" && typeof value.key === "string" && value.key.trim().length > 0) {
+      return value.key.trim()
+    }
+  }
+  return null
+}
+
+/**
  * Provider of the most recently used model, from the TUI's `model.json`.
  * Mirrors the TUI's own fallback so the banner shows on the home screen too.
  */
