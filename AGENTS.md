@@ -40,10 +40,12 @@ subscription usage (5h / week / month) in the `prompt.footer.status` slot. Publi
 - The plugin is deliberately **fail-silent**: missing key, non-Go provider, network error, rate
   limit, or a bad response all just keep the banner hidden. Don't introduce throwing/logging there.
 - **Key source (OpenCode 2):** credentials are no longer written to `~/.local/share/opencode/auth.json`
-  — `/connect` stores them in OpenCode's own store, read via `context.client.credential.list()`
-  (`goKeyFromCredentials` picks the active `opencode-go` `key` entry). `readGoKey()` (the old
-  `auth.json` path) is only a fallback. Resolve the key on every refresh, not once in `setup`, so a
-  re-`/connect` or key rotation is picked up without a TUI restart.
+  — `/connect` stores them in OpenCode's own store, read via `context.client.credential.list()`.
+  `goKeyFromCredentials` accepts, most specific first: the active `opencode-go` `key` entry, the
+  active `opencode-go` `oauth` access token, and the console sign-in (`opencode`) `oauth` access
+  token — the usage endpoint accepts all three as the bearer. `readGoKey()` (the old `auth.json`
+  path, `opencode-go` then `opencode`) is only a fallback. Resolve the key on every refresh, not
+  once in `setup`, so a re-`/connect` or OAuth token rotation is picked up without a TUI restart.
 - In the TUI file, signals (`createSignal`) and timers are created once in `setup`, **outside** the
   slot renderer; the render function only reads signals (`usage()`, `now()`) and
   `context.ui.model.current()`, all reactive. Renderables must be built inside the slot renderer

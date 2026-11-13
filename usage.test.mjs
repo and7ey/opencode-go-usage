@@ -46,6 +46,14 @@ test("readGoKey returns the stored key", () => {
   assert.equal(readGoKey({ readFile }), "secret")
 })
 
+test("readGoKey falls back to the opencode key", () => {
+  const readFile = () => JSON.stringify({ opencode: { type: "api", key: "console-key" } })
+  assert.equal(readGoKey({ readFile }), "console-key")
+  const both = () =>
+    JSON.stringify({ "opencode-go": { key: "go-key" }, opencode: { key: "console-key" } })
+  assert.equal(readGoKey({ readFile: both }), "go-key")
+})
+
 test("readGoKey returns null for missing provider, empty key and bad json", () => {
   assert.equal(readGoKey({ readFile: () => JSON.stringify({ openrouter: { key: "x" } }) }), null)
   assert.equal(readGoKey({ readFile: () => JSON.stringify({ "opencode-go": { key: "" } }) }), null)
@@ -93,16 +101,49 @@ test("goKeyFromCredentials picks the active Go key from credential.list()", () =
   assert.equal(goKeyFromCredentials(entries), "fresh-key")
 })
 
-test("goKeyFromCredentials returns null without an active key credential", () => {
+test("goKeyFromCredentials accepts the Go oauth access token when there is no key", () => {
+  const entries = [
+    { integrationID: "opencode-go", active: false, value: { type: "oauth", access: "stale-token" } },
+    { integrationID: "opencode-go", active: true, value: { type: "oauth", access: "  fresh-token  " } },
+  ]
+  assert.equal(goKeyFromCredentials(entries), "fresh-token")
+})
+
+test("goKeyFromCredentials falls back to the console sign-in oauth token", () => {
+  const entries = [
+    { integrationID: "openai", active: true, value: { type: "oauth", access: "other-token" } },
+    { integrationID: "opencode", active: true, value: { type: "oauth", access: "console-token" } },
+  ]
+  assert.equal(goKeyFromCredentials(entries), "console-token")
+})
+
+test("goKeyFromCredentials prefers the Go key, then the Go oauth, over the console oauth", () => {
+  const consoleEntry = { integrationID: "opencode", active: true, value: { type: "oauth", access: "console-token" } }
+  const goOAuthEntry = { integrationID: "opencode-go", active: true, value: { type: "oauth", access: "go-token" } }
+  const goKeyEntry = { integrationID: "opencode-go", active: true, value: { type: "key", key: "go-key" } }
+  assert.equal(goKeyFromCredentials([consoleEntry, goOAuthEntry]), "go-token")
+  assert.equal(goKeyFromCredentials([consoleEntry, goOAuthEntry, goKeyEntry]), "go-key")
+  assert.equal(goKeyFromCredentials([consoleEntry, goKeyEntry]), "go-key")
+})
+
+test("goKeyFromCredentials returns null without an active usable credential", () => {
   assert.equal(goKeyFromCredentials(null), null)
   assert.equal(goKeyFromCredentials(undefined), null)
   assert.equal(goKeyFromCredentials([]), null)
   assert.equal(
-    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "oauth", access: "x" } }]),
+    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "key", key: "   " } }]),
     null,
   )
   assert.equal(
-    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "key", key: "   " } }]),
+    goKeyFromCredentials([{ integrationID: "opencode-go", active: true, value: { type: "oauth", access: "  " } }]),
+    null,
+  )
+  assert.equal(
+    goKeyFromCredentials([{ integrationID: "opencode", active: false, value: { type: "oauth", access: "x" } }]),
+    null,
+  )
+  assert.equal(
+    goKeyFromCredentials([{ integrationID: "openai", active: true, value: { type: "oauth", access: "x" } }]),
     null,
   )
 })

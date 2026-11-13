@@ -39,6 +39,11 @@ GET https://opencode.ai/zen/go/v1/usage
 Authorization: Bearer <opencode-go key>
 ```
 
+Signed in with the OpenCode console instead of `/connect` → OpenCode Go? That works too: the
+endpoint also accepts the console sign-in's OAuth access token (`integrationID` `opencode`,
+`value.type` `oauth`), so the plugin uses it when no Go API key is present. Access tokens rotate;
+the credential is re-resolved on every refresh, so a rotation is picked up without a TUI restart.
+
 ```json
 {"usage":{
   "rolling":{"status":"ok","percent":7,"resetsAt":"..."},

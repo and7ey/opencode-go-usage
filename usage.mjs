@@ -6,12 +6,15 @@ import { join } from "node:path"
  * OpenCode Go subscription usage.
  *
  * Data comes from the same JSON endpoint the OpenCode console uses; it requires
- * the OpenCode Go API key that OpenCode already stores locally in `auth.json`.
- * No scraping, no cookies, no database.
+ * a bearer credential — the OpenCode Go API key, or the access token of the
+ * OpenCode console sign-in — read from OpenCode 2's credential store (with the
+ * legacy `auth.json` as fallback). No scraping, no cookies, no database.
  */
 
 export const USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
 export const GO_PROVIDER_ID = "opencode-go"
+/** Console sign-in integration: its OAuth access token is also accepted by the usage endpoint. */
+export const CONSOLE_INTEGRATION_ID = "opencode"
 
 function baseDir(xdg, fallback, home) {
   return xdg && xdg.length > 0 ? xdg : join(home, fallback)
@@ -36,7 +39,7 @@ export function readGoKey({ env = process.env, home = homedir(), readFile = defa
   try {
     const raw = readFile(authFilePath(env, home))
     const auth = JSON.parse(raw)
-    const key = auth?.[GO_PROVIDER_ID]?.key
+    const key = auth?.[GO_PROVIDER_ID]?.key ?? auth?.[CONSOLE_INTEGRATION_ID]?.key
     if (typeof key === "string" && key.trim().length > 0) return key.trim()
     return null
   } catch {
@@ -45,24 +48,47 @@ export function readGoKey({ env = process.env, home = homedir(), readFile = defa
 }
 
 /**
- * Pick the active API key for a provider from `OpenCodeClient.credential.list()`
- * entries.
+ * Pick the bearer credential for the usage endpoint from
+ * `OpenCodeClient.credential.list()` entries.
  *
  * OpenCode 2 stopped using `auth.json` and keeps credentials in its own store,
  * surfaced to plugins through the client's `credential` domain. Entries look
- * like `{ integrationID, label, active, value: { type: "key", key } }`; the
- * active `key` entry wins. Returns `null` when there is no active key.
+ * like `{ integrationID, label, active, value }`. Accepted, most specific first:
+ *
+ * 1. the active `opencode-go` `key` entry (`/connect` → OpenCode Go API key),
+ * 2. the active `opencode-go` `oauth` entry (its access token),
+ * 3. the active console sign-in (`opencode`) `oauth` entry — the console's
+ *    access token is accepted by the usage endpoint too.
+ *
+ * Returns `null` when none is present. Resolve on every refresh: OAuth access
+ * tokens rotate, and the next `credential.list()` already carries the new one.
  */
 export function goKeyFromCredentials(entries, integrationID = GO_PROVIDER_ID) {
   if (!Array.isArray(entries)) return null
+  let goOAuth = null
+  let consoleOAuth = null
   for (const entry of entries) {
-    if (!entry || entry.integrationID !== integrationID || entry.active !== true) continue
+    if (!entry || entry.active !== true) continue
     const value = entry.value
-    if (value?.type === "key" && typeof value.key === "string" && value.key.trim().length > 0) {
-      return value.key.trim()
+    if (entry.integrationID === integrationID) {
+      if (value?.type === "key" && typeof value.key === "string" && value.key.trim().length > 0) {
+        return value.key.trim()
+      }
+      if (!goOAuth && value?.type === "oauth" && typeof value.access === "string" && value.access.trim().length > 0) {
+        goOAuth = value.access.trim()
+      }
+    } else if (entry.integrationID === CONSOLE_INTEGRATION_ID) {
+      if (
+        !consoleOAuth &&
+        value?.type === "oauth" &&
+        typeof value.access === "string" &&
+        value.access.trim().length > 0
+      ) {
+        consoleOAuth = value.access.trim()
+      }
     }
   }
-  return null
+  return goOAuth ?? consoleOAuth
 }
 
 /**
